@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Run AssistentIA Desktop",
+      "request": "launch",
+      "mainClass": "com.facundo.assistentia.Main",
+      "projectName": "backend",
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "FLYWAY_ENABLED": "false"
+      }
+    }
+  ]
+}
