@@ -1,6 +1,7 @@
 package com.facundo.assistentia;
 
 import com.facundo.assistentia.interfaces.desktop.DesktopLoginFrame;
+import com.facundo.assistentia.interfaces.desktop.DesktopUiBootstrap;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -14,6 +15,8 @@ public final class Main {
     }
 
     public static void main(String[] args) {
+        DesktopUiBootstrap.configure();
+
         if (GraphicsEnvironment.isHeadless()) {
             AssistentiaBackendApplication.main(args);
             return;

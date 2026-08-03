@@ -27,6 +27,7 @@ import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -47,13 +48,13 @@ public final class DesktopDashboardFrame extends JFrame {
     private static final Color TEXT = new Color(226, 232, 240);
     private static final Color MUTED = new Color(148, 163, 184);
     private static final Color ACCENT = new Color(56, 189, 248);
-        private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter
+    private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter
             .ofPattern("dd/MM/yyyy HH:mm")
             .withZone(ZoneId.systemDefault());
 
     private final ConfigurableApplicationContext applicationContext;
-        private final DesktopSession session;
-        private final AssetWorkspaceService assetWorkspaceService;
+    private final DesktopSession session;
+    private final AssetWorkspaceService assetWorkspaceService;
     private final CardLayout contentLayout = new CardLayout();
     private final JPanel contentPanel = new JPanel(contentLayout);
     private final JLabel pageTitle = new JLabel("Dashboard");
@@ -80,7 +81,7 @@ public final class DesktopDashboardFrame extends JFrame {
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(1024, 680));
         setSize(1280, 780);
-        setLocationByPlatform(true);
+        setLocationRelativeTo(null);
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent event) {
@@ -139,6 +140,10 @@ public final class DesktopDashboardFrame extends JFrame {
         JLabel account = createLabel(session.displayName() + "  @" + session.username(), 12, Font.PLAIN, MUTED);
         account.setBorder(BorderFactory.createEmptyBorder(0, 24, 12, 24));
         sidebar.add(account);
+
+        JLabel roleBadge = createRoleBadge(formatRole(session.role()));
+        roleBadge.setBorder(BorderFactory.createEmptyBorder(0, 24, 16, 24));
+        sidebar.add(roleBadge);
 
         JButton logout = createSecondaryButton("Cerrar sesion");
         logout.setAlignmentX(LEFT_ALIGNMENT);
@@ -452,6 +457,27 @@ public final class DesktopDashboardFrame extends JFrame {
         button.setBorder(BorderFactory.createLineBorder(BORDER));
         button.setFocusPainted(false);
         return button;
+    }
+
+    private JLabel createRoleBadge(String text) {
+        JLabel badge = new JLabel(text, SwingConstants.CENTER);
+        badge.setOpaque(true);
+        badge.setBackground(SURFACE_ALT);
+        badge.setForeground(ACCENT);
+        badge.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        badge.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createEmptyBorder(8, 12, 8, 12)
+        ));
+        return badge;
+    }
+
+    private String formatRole(com.facundo.assistentia.domain.user.model.UserRole role) {
+        return switch (role) {
+            case ADMIN -> "Administrador";
+            case LEADER -> "Lider";
+            case MEMBER -> "Miembro";
+        };
     }
 
     private JTextField createTextField(String placeholder) {

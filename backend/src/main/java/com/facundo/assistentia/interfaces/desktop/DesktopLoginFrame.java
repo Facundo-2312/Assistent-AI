@@ -48,7 +48,7 @@ public final class DesktopLoginFrame extends JFrame {
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(880, 600));
         setSize(940, 650);
-        setLocationByPlatform(true);
+        setLocationRelativeTo(null);
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent event) {
