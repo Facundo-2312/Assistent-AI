@@ -1,5 +1,7 @@
 package com.facundo.assistentia.application.auth.service;
 
+import com.facundo.assistentia.application.user.service.UserAccountService;
+import com.facundo.assistentia.infrastructure.persistence.inmemory.TeamInMemoryRepository;
 import com.facundo.assistentia.domain.user.model.UserRole;
 import com.facundo.assistentia.infrastructure.persistence.inmemory.UserInMemoryRepository;
 import org.junit.jupiter.api.Test;
@@ -12,9 +14,13 @@ class DesktopAuthenticationServiceTest {
     @Test
     void shouldRegisterFirstMemberAsAdminAndAuthenticateWithPassword() {
         UserInMemoryRepository userRepository = new UserInMemoryRepository();
-        DesktopAuthenticationService authenticationService = new DesktopAuthenticationService(
+        UserAccountService userAccountService = new UserAccountService(
                 userRepository,
+                new TeamInMemoryRepository(),
                 new BCryptPasswordEncoder()
+        );
+        DesktopAuthenticationService authenticationService = new DesktopAuthenticationService(
+                userAccountService
         );
 
         DesktopSession registeredMember = authenticationService.register(

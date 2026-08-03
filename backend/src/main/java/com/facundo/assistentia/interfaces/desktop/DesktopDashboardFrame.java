@@ -3,6 +3,8 @@ package com.facundo.assistentia.interfaces.desktop;
 import com.facundo.assistentia.application.asset.service.AssetHoldingView;
 import com.facundo.assistentia.application.asset.service.AssetWorkspaceService;
 import com.facundo.assistentia.application.auth.service.DesktopSession;
+import com.facundo.assistentia.domain.user.model.User;
+import com.facundo.assistentia.domain.user.repository.UserRepository;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import javax.swing.BorderFactory;
@@ -22,6 +24,8 @@ import javax.swing.ListSelectionModel;
 import javax.swing.JOptionPane;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -55,6 +59,7 @@ public final class DesktopDashboardFrame extends JFrame {
     private final ConfigurableApplicationContext applicationContext;
     private final DesktopSession session;
     private final AssetWorkspaceService assetWorkspaceService;
+        private final UserRepository userRepository;
     private final CardLayout contentLayout = new CardLayout();
     private final JPanel contentPanel = new JPanel(contentLayout);
     private final JLabel pageTitle = new JLabel("Dashboard");
@@ -62,6 +67,16 @@ public final class DesktopDashboardFrame extends JFrame {
     private final DefaultTableModel prospectsModel = new DefaultTableModel(
             new Object[]{"Nombre", "Estado", "Ultimo contacto"}, 0
     );
+        private final DefaultTableModel usersModel = new DefaultTableModel(
+            new Object[]{"Nombre", "Usuario", "Rol", "Email"}, 0
+        ) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+        };
+        private final JTextField usersSearchField = new JTextField();
+        private final JComboBox<String> usersRoleFilter = new JComboBox<>(new String[]{"Todos", "Administrador", "Lider", "Miembro"});
     private final DefaultTableModel sharedAssetsModel = new DefaultTableModel(
             new Object[]{"Activo", "Cantidad", "Propietario", "Usuario", "Actualizado"}, 0
     ) {
@@ -76,6 +91,7 @@ public final class DesktopDashboardFrame extends JFrame {
         this.applicationContext = applicationContext;
         this.session = session;
         this.assetWorkspaceService = applicationContext.getBean(AssetWorkspaceService.class);
+        this.userRepository = applicationContext.getBean(UserRepository.class);
 
         setTitle("AssistentIA - " + session.displayName());
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -128,6 +144,7 @@ public final class DesktopDashboardFrame extends JFrame {
         sidebar.add(createNavigationButton("Prospectos", "prospects", "Seguimiento comercial del equipo"));
         sidebar.add(createNavigationButton("Tareas", "tasks", "Prioridades y pendientes"));
         sidebar.add(createNavigationButton("Activos", "assets", "Activos personales visibles para todo el equipo"));
+        sidebar.add(createNavigationButton("Usuarios", "users", "Directorio visible para el equipo"));
         sidebar.add(createNavigationButton("Reuniones", "meetings", "Agenda y acuerdos"));
         sidebar.add(createNavigationButton("Equipo", "team", "Actividad de la red"));
 
@@ -180,6 +197,7 @@ public final class DesktopDashboardFrame extends JFrame {
         contentPanel.add(createProspects(), "prospects");
         contentPanel.add(createTasks(), "tasks");
         contentPanel.add(createAssets(), "assets");
+        contentPanel.add(createUsers(), "users");
         contentPanel.add(createMeetings(), "meetings");
         contentPanel.add(createTeam(), "team");
 
@@ -209,11 +227,120 @@ public final class DesktopDashboardFrame extends JFrame {
         }));
         lower.add(createInfoPanel("Actividad reciente", new String[]{
                 "La aplicacion de escritorio esta lista.",
-                "Los datos se conectaran al equipo en los siguientes modulos."
+                "El directorio de usuarios esta disponible para control del equipo."
         }));
         dashboard.add(lower, BorderLayout.CENTER);
 
         return dashboard;
+    }
+
+    private JPanel createUsers() {
+        JPanel panel = new JPanel(new BorderLayout(0, 16));
+        panel.setBackground(BACKGROUND);
+
+        JPanel summary = new JPanel(new GridLayout(1, 3, 14, 0));
+        summary.setBackground(BACKGROUND);
+        summary.add(createMetricCard("USUARIOS", String.valueOf(userRepository.findAll().size()), "Cuentas registradas"));
+        summary.add(createMetricCard("ROL ACTIVO", formatRole(session.role()), "Tu nivel de acceso actual"));
+        summary.add(createMetricCard("VISIBILIDAD", "Equipo", "Directorio compartido con la red"));
+        panel.add(summary, BorderLayout.NORTH);
+
+        JPanel content = new JPanel(new BorderLayout(0, 12));
+        content.setBackground(SURFACE);
+        content.setBorder(createPanelBorder());
+
+        JLabel title = createLabel("Directorio de usuarios registrados", 16, Font.BOLD, TEXT);
+        title.setBorder(BorderFactory.createEmptyBorder(18, 18, 6, 18));
+        content.add(title, BorderLayout.NORTH);
+
+        JPanel controls = createUsersControls();
+
+        JTable table = new JTable(usersModel);
+        styleTable(table);
+        table.getColumnModel().getColumn(0).setPreferredWidth(220);
+        table.getColumnModel().getColumn(1).setPreferredWidth(160);
+        table.getColumnModel().getColumn(2).setPreferredWidth(110);
+        table.getColumnModel().getColumn(3).setPreferredWidth(260);
+
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder(0, 18, 18, 18));
+        scrollPane.getViewport().setBackground(SURFACE);
+
+        JPanel body = new JPanel(new BorderLayout());
+        body.setBackground(SURFACE);
+        body.add(controls, BorderLayout.NORTH);
+        body.add(scrollPane, BorderLayout.CENTER);
+        content.add(body, BorderLayout.CENTER);
+
+        panel.add(content, BorderLayout.CENTER);
+        refreshUsersDirectory();
+        return panel;
+    }
+
+    private JPanel createUsersControls() {
+        JPanel controls = new JPanel(new GridBagLayout());
+        controls.setBackground(SURFACE);
+        controls.setBorder(BorderFactory.createEmptyBorder(0, 18, 12, 18));
+
+        GridBagConstraints constraints = new GridBagConstraints();
+        constraints.gridy = 0;
+        constraints.fill = GridBagConstraints.HORIZONTAL;
+        constraints.insets = new Insets(0, 0, 0, 10);
+        constraints.weighty = 0;
+
+        JLabel hint = createLabel(
+                "Filtra usuarios por nombre, usuario, email o rol.",
+                13,
+                Font.PLAIN,
+                MUTED
+        );
+        constraints.gridx = 0;
+        constraints.weightx = 1;
+        controls.add(hint, constraints);
+
+        usersSearchField.setToolTipText("Buscar por nombre, usuario o email");
+        configureFilterField(usersSearchField);
+        usersSearchField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent event) {
+                refreshUsersDirectory();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent event) {
+                refreshUsersDirectory();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent event) {
+                refreshUsersDirectory();
+            }
+        });
+
+        constraints.gridx = 1;
+        constraints.weightx = 0.9;
+        controls.add(usersSearchField, constraints);
+
+        styleComboBox(usersRoleFilter);
+        usersRoleFilter.addActionListener(event -> refreshUsersDirectory());
+
+        constraints.gridx = 2;
+        constraints.weightx = 0.35;
+        controls.add(usersRoleFilter, constraints);
+
+        JButton clear = createSecondaryButton("Limpiar");
+        clear.addActionListener(event -> {
+            usersSearchField.setText("");
+            usersRoleFilter.setSelectedIndex(0);
+            refreshUsersDirectory();
+        });
+
+        constraints.gridx = 3;
+        constraints.weightx = 0;
+        constraints.insets = new Insets(0, 0, 0, 0);
+        controls.add(clear, constraints);
+
+        return controls;
     }
 
     private JPanel createProspects() {
@@ -532,6 +659,9 @@ public final class DesktopDashboardFrame extends JFrame {
         if ("assets".equals(page)) {
             refreshSharedAssets();
         }
+        if ("users".equals(page)) {
+            refreshUsersDirectory();
+        }
         contentLayout.show(contentPanel, page);
     }
 
@@ -570,6 +700,60 @@ public final class DesktopDashboardFrame extends JFrame {
                     DATE_TIME_FORMAT.format(holding.updatedAt())
             });
         }
+    }
+
+    private void refreshUsersDirectory() {
+        usersModel.setRowCount(0);
+        String search = usersSearchField.getText().trim().toLowerCase();
+        String selectedRole = (String) usersRoleFilter.getSelectedItem();
+
+        for (User user : userRepository.findAll()) {
+            String role = formatRole(user.getRole());
+            String displayName = formatUserName(user);
+            String username = user.getUsername() == null ? "" : user.getUsername();
+            String email = user.getEmail() == null ? "" : user.getEmail();
+
+            if (!search.isEmpty()) {
+                String haystack = (displayName + " " + username + " " + email + " " + role).toLowerCase();
+                if (!haystack.contains(search)) {
+                    continue;
+                }
+            }
+
+            if (selectedRole != null && !"Todos".equals(selectedRole) && !selectedRole.equals(role)) {
+                continue;
+            }
+
+            usersModel.addRow(new Object[]{
+                    displayName,
+                    username,
+                    role,
+                    email
+            });
+        }
+    }
+
+    private void configureFilterField(JTextField field) {
+        field.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        field.setForeground(TEXT);
+        field.setCaretColor(TEXT);
+        field.setBackground(SURFACE_ALT);
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createEmptyBorder(9, 10, 9, 10)
+        ));
+    }
+
+    private String formatUserName(User user) {
+        if (user.getFirstName() == null || user.getFirstName().isBlank()) {
+            return user.getUsername();
+        }
+
+        if (user.getLastName() == null || user.getLastName().isBlank()) {
+            return user.getFirstName();
+        }
+
+        return user.getFirstName() + " " + user.getLastName();
     }
 
     private void logout() {

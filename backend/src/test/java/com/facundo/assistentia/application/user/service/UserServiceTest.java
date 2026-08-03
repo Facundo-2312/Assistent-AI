@@ -12,7 +12,6 @@ import com.facundo.assistentia.domain.team.repository.TeamRepository;
 import com.facundo.assistentia.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,11 +36,19 @@ class UserServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
-    @InjectMocks
     private UserService userService;
+
+    private UserAccountService userAccountService;
+
+    private void initService() {
+        userAccountService = new UserAccountService(userRepository, teamRepository, passwordEncoder);
+        userService = new UserService(userAccountService);
+    }
 
     @Test
     void shouldRegisterUserWithEncodedPassword() {
+        initService();
+
         UUID teamId = UUID.randomUUID();
         Team team = Team.builder()
                 .id(teamId)

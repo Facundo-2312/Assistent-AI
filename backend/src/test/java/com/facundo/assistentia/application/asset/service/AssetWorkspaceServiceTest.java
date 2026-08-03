@@ -2,8 +2,10 @@ package com.facundo.assistentia.application.asset.service;
 
 import com.facundo.assistentia.application.auth.service.DesktopAuthenticationService;
 import com.facundo.assistentia.application.auth.service.DesktopSession;
+import com.facundo.assistentia.application.user.service.UserAccountService;
 import com.facundo.assistentia.domain.asset.model.AssetHolding;
 import com.facundo.assistentia.domain.asset.repository.AssetHoldingRepository;
+import com.facundo.assistentia.infrastructure.persistence.inmemory.TeamInMemoryRepository;
 import com.facundo.assistentia.infrastructure.persistence.inmemory.UserInMemoryRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -21,9 +23,13 @@ class AssetWorkspaceServiceTest {
     @Test
     void shouldShareEveryMemberAssetHoldingAndPreserveTheAssetCatalogNames() {
         UserInMemoryRepository userRepository = new UserInMemoryRepository();
+        UserAccountService userAccountService = new UserAccountService(
+            userRepository,
+            new TeamInMemoryRepository(),
+            new BCryptPasswordEncoder()
+        );
         DesktopAuthenticationService authenticationService = new DesktopAuthenticationService(
-                userRepository,
-                new BCryptPasswordEncoder()
+            userAccountService
         );
         DesktopSession facundo = authenticationService.register("facundo", "Facundo", "Password123!");
         DesktopSession maria = authenticationService.register("maria", "Maria", "Password123!");
