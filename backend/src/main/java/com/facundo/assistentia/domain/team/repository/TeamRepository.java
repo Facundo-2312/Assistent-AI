@@ -9,5 +9,6 @@ import java.util.UUID;
 @Repository
 public interface TeamRepository {
     Optional<Team> findById(UUID id);
+    Optional<Team> findBySlug(String slug);
     Team save(Team team);
 }

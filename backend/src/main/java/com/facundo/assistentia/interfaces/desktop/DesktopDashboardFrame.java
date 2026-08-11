@@ -3,7 +3,9 @@ package com.facundo.assistentia.interfaces.desktop;
 import com.facundo.assistentia.application.asset.service.AssetHoldingView;
 import com.facundo.assistentia.application.asset.service.AssetWorkspaceService;
 import com.facundo.assistentia.application.auth.service.DesktopSession;
+import com.facundo.assistentia.application.user.service.UserAccountService;
 import com.facundo.assistentia.domain.user.model.User;
+import com.facundo.assistentia.domain.user.model.UserRole;
 import com.facundo.assistentia.domain.user.repository.UserRepository;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -16,6 +18,7 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
@@ -31,7 +34,6 @@ import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -42,6 +44,9 @@ import java.awt.event.WindowEvent;
 import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 public final class DesktopDashboardFrame extends JFrame {
 
@@ -59,7 +64,8 @@ public final class DesktopDashboardFrame extends JFrame {
     private final ConfigurableApplicationContext applicationContext;
     private final DesktopSession session;
     private final AssetWorkspaceService assetWorkspaceService;
-        private final UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final UserAccountService userAccountService;
     private final CardLayout contentLayout = new CardLayout();
     private final JPanel contentPanel = new JPanel(contentLayout);
     private final JLabel pageTitle = new JLabel("Dashboard");
@@ -67,16 +73,18 @@ public final class DesktopDashboardFrame extends JFrame {
     private final DefaultTableModel prospectsModel = new DefaultTableModel(
             new Object[]{"Nombre", "Estado", "Ultimo contacto"}, 0
     );
-        private final DefaultTableModel usersModel = new DefaultTableModel(
+    private final DefaultTableModel usersModel = new DefaultTableModel(
             new Object[]{"Nombre", "Usuario", "Rol", "Email"}, 0
-        ) {
+    ) {
         @Override
         public boolean isCellEditable(int row, int column) {
             return false;
         }
-        };
-        private final JTextField usersSearchField = new JTextField();
-        private final JComboBox<String> usersRoleFilter = new JComboBox<>(new String[]{"Todos", "Administrador", "Lider", "Miembro"});
+    };
+    private final JTextField usersSearchField = new JTextField();
+    private final JComboBox<String> usersRoleFilter = new JComboBox<>(new String[]{"Todos", "Administrador", "Lider", "Miembro"});
+    private final JTable usersTable = new JTable(usersModel);
+    private final List<User> usersDirectoryCache = new ArrayList<>();
     private final DefaultTableModel sharedAssetsModel = new DefaultTableModel(
             new Object[]{"Activo", "Cantidad", "Propietario", "Usuario", "Actualizado"}, 0
     ) {
@@ -92,6 +100,7 @@ public final class DesktopDashboardFrame extends JFrame {
         this.session = session;
         this.assetWorkspaceService = applicationContext.getBean(AssetWorkspaceService.class);
         this.userRepository = applicationContext.getBean(UserRepository.class);
+        this.userAccountService = applicationContext.getBean(UserAccountService.class);
 
         setTitle("AssistentIA - " + session.displayName());
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -161,6 +170,17 @@ public final class DesktopDashboardFrame extends JFrame {
         JLabel roleBadge = createRoleBadge(formatRole(session.role()));
         roleBadge.setBorder(BorderFactory.createEmptyBorder(0, 24, 16, 24));
         sidebar.add(roleBadge);
+
+        if (session.teamCode() != null) {
+            JLabel teamInfo = createLabel(
+                "<html><div style='width:180px;'>EQUIPO: " + session.teamName() + "<br/>CODIGO: " + session.teamCode() + "</div></html>",
+                11,
+                Font.BOLD,
+                TEXT
+            );
+            teamInfo.setBorder(BorderFactory.createEmptyBorder(0, 24, 16, 24));
+            sidebar.add(teamInfo);
+        }
 
         JButton logout = createSecondaryButton("Cerrar sesion");
         logout.setAlignmentX(LEFT_ALIGNMENT);
@@ -255,14 +275,14 @@ public final class DesktopDashboardFrame extends JFrame {
 
         JPanel controls = createUsersControls();
 
-        JTable table = new JTable(usersModel);
-        styleTable(table);
-        table.getColumnModel().getColumn(0).setPreferredWidth(220);
-        table.getColumnModel().getColumn(1).setPreferredWidth(160);
-        table.getColumnModel().getColumn(2).setPreferredWidth(110);
-        table.getColumnModel().getColumn(3).setPreferredWidth(260);
+        styleTable(usersTable);
+        usersTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        usersTable.getColumnModel().getColumn(0).setPreferredWidth(220);
+        usersTable.getColumnModel().getColumn(1).setPreferredWidth(160);
+        usersTable.getColumnModel().getColumn(2).setPreferredWidth(110);
+        usersTable.getColumnModel().getColumn(3).setPreferredWidth(260);
 
-        JScrollPane scrollPane = new JScrollPane(table);
+        JScrollPane scrollPane = new JScrollPane(usersTable);
         scrollPane.setBorder(BorderFactory.createEmptyBorder(0, 18, 18, 18));
         scrollPane.getViewport().setBackground(SURFACE);
 
@@ -339,6 +359,22 @@ public final class DesktopDashboardFrame extends JFrame {
         constraints.weightx = 0;
         constraints.insets = new Insets(0, 0, 0, 0);
         controls.add(clear, constraints);
+
+        if (isAdminSession()) {
+            JButton createUser = createPrimaryButton("Crear usuario");
+            createUser.addActionListener(event -> showCreateUserDialog());
+
+            constraints.gridx = 4;
+            constraints.insets = new Insets(0, 8, 0, 0);
+            controls.add(createUser, constraints);
+
+            JButton editUser = createSecondaryButton("Editar seleccionado");
+            editUser.addActionListener(event -> showEditSelectedUserDialog());
+
+            constraints.gridx = 5;
+            constraints.insets = new Insets(0, 8, 0, 0);
+            controls.add(editUser, constraints);
+        }
 
         return controls;
     }
@@ -554,35 +590,20 @@ public final class DesktopDashboardFrame extends JFrame {
 
     private JButton createNavigationButton(String title, String page, String description) {
         JButton button = new JButton(title);
-        button.setAlignmentX(LEFT_ALIGNMENT);
-        button.setBackground(SURFACE);
-        button.setForeground(MUTED);
-        button.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        button.setBorder(BorderFactory.createEmptyBorder(12, 24, 12, 24));
-        button.setFocusPainted(false);
-        button.setHorizontalAlignment(SwingConstants.LEFT);
-        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+        DesktopButtonStyler.styleNavigation(button, SURFACE, MUTED, 13);
         button.addActionListener(event -> showPage(page, title, description));
         return button;
     }
 
     private JButton createPrimaryButton(String label) {
         JButton button = new JButton(label);
-        button.setBackground(ACCENT);
-        button.setForeground(BACKGROUND);
-        button.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        button.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
-        button.setFocusPainted(false);
+        DesktopButtonStyler.stylePrimary(button, ACCENT, BACKGROUND, 12);
         return button;
     }
 
     private JButton createSecondaryButton(String label) {
         JButton button = new JButton(label);
-        button.setBackground(SURFACE_ALT);
-        button.setForeground(TEXT);
-        button.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        button.setBorder(BorderFactory.createLineBorder(BORDER));
-        button.setFocusPainted(false);
+        DesktopButtonStyler.styleSecondary(button, SURFACE_ALT, TEXT, BORDER, 12);
         return button;
     }
 
@@ -704,10 +725,15 @@ public final class DesktopDashboardFrame extends JFrame {
 
     private void refreshUsersDirectory() {
         usersModel.setRowCount(0);
+        usersDirectoryCache.clear();
         String search = usersSearchField.getText().trim().toLowerCase();
         String selectedRole = (String) usersRoleFilter.getSelectedItem();
 
         for (User user : userRepository.findAll()) {
+            if (!belongsToCurrentTeam(user)) {
+                continue;
+            }
+
             String role = formatRole(user.getRole());
             String displayName = formatUserName(user);
             String username = user.getUsername() == null ? "" : user.getUsername();
@@ -724,6 +750,7 @@ public final class DesktopDashboardFrame extends JFrame {
                 continue;
             }
 
+            usersDirectoryCache.add(user);
             usersModel.addRow(new Object[]{
                     displayName,
                     username,
@@ -731,6 +758,188 @@ public final class DesktopDashboardFrame extends JFrame {
                     email
             });
         }
+    }
+
+    private boolean belongsToCurrentTeam(User user) {
+        UUID userTeamId = user.getTeam() == null ? null : user.getTeam().getId();
+        if (session.teamId() == null) {
+            return userTeamId == null;
+        }
+        return session.teamId().equals(userTeamId);
+    }
+
+    private boolean isAdminSession() {
+        return session.role() == UserRole.ADMIN;
+    }
+
+    private void showCreateUserDialog() {
+        JTextField displayName = createTextField("Nombre visible");
+        JTextField username = createTextField("Usuario");
+        JTextField email = createTextField("Correo (opcional)");
+        JPasswordField password = new JPasswordField();
+        password.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        password.setForeground(TEXT);
+        password.setCaretColor(TEXT);
+        password.setBackground(SURFACE_ALT);
+        password.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createEmptyBorder(9, 10, 9, 10)
+        ));
+        JComboBox<String> role = new JComboBox<>(new String[]{"Administrador", "Lider", "Miembro"});
+        styleComboBox(role);
+
+        JPanel form = buildDialogForm(new Object[]{
+                "Nombre", displayName,
+                "Usuario", username,
+                "Correo", email,
+                "Contrasena", password,
+                "Rol", role
+        });
+
+        int option = JOptionPane.showConfirmDialog(
+                this,
+                form,
+                "Crear usuario del equipo",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (option != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        try {
+            User created = userAccountService.createManagedUser(
+                    session,
+                    displayName.getText(),
+                    username.getText(),
+                    email.getText(),
+                    new String(password.getPassword()),
+                    parseRole((String) role.getSelectedItem())
+            );
+            refreshUsersDirectory();
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Usuario @" + created.getUsername() + " creado correctamente.",
+                    "Usuarios",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+        } catch (IllegalArgumentException exception) {
+            showError(exception.getMessage());
+        }
+    }
+
+    private void showEditSelectedUserDialog() {
+        int selectedRow = usersTable.getSelectedRow();
+        if (selectedRow < 0 || selectedRow >= usersDirectoryCache.size()) {
+            showError("Selecciona un usuario para editar.");
+            return;
+        }
+
+        User selected = usersDirectoryCache.get(selectedRow);
+        JTextField displayName = createTextField("Nombre visible");
+        displayName.setText(formatUserName(selected));
+
+        JTextField email = createTextField("Correo");
+        email.setText(selected.getEmail() == null ? "" : selected.getEmail());
+
+        JPasswordField newPassword = new JPasswordField();
+        newPassword.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        newPassword.setForeground(TEXT);
+        newPassword.setCaretColor(TEXT);
+        newPassword.setBackground(SURFACE_ALT);
+        newPassword.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createEmptyBorder(9, 10, 9, 10)
+        ));
+
+        JComboBox<String> role = new JComboBox<>(new String[]{"Administrador", "Lider", "Miembro"});
+        styleComboBox(role);
+        role.setSelectedItem(formatRole(selected.getRole()));
+
+        JPanel form = buildDialogForm(new Object[]{
+                "Usuario", createReadOnlyField("@" + selected.getUsername()),
+                "Nombre", displayName,
+                "Correo", email,
+                "Nueva contrasena", newPassword,
+                "Rol", role
+        });
+
+        int option = JOptionPane.showConfirmDialog(
+                this,
+                form,
+                "Editar usuario",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (option != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        try {
+            userAccountService.updateManagedUser(
+                    session,
+                    selected.getId(),
+                    displayName.getText(),
+                    email.getText(),
+                    parseRole((String) role.getSelectedItem()),
+                    new String(newPassword.getPassword())
+            );
+            refreshUsersDirectory();
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Usuario actualizado correctamente.",
+                    "Usuarios",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+        } catch (IllegalArgumentException exception) {
+            showError(exception.getMessage());
+        }
+    }
+
+    private JPanel buildDialogForm(Object[] fields) {
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBackground(SURFACE);
+
+        GridBagConstraints constraints = new GridBagConstraints();
+        constraints.insets = new Insets(6, 6, 6, 6);
+        constraints.fill = GridBagConstraints.HORIZONTAL;
+        constraints.weightx = 0;
+        constraints.gridx = 0;
+
+        for (int index = 0; index < fields.length; index += 2) {
+            constraints.gridy = index / 2;
+            JLabel label = createLabel((String) fields[index], 12, Font.BOLD, MUTED);
+            form.add(label, constraints);
+
+            constraints.gridx = 1;
+            constraints.weightx = 1;
+            form.add((java.awt.Component) fields[index + 1], constraints);
+
+            constraints.gridx = 0;
+            constraints.weightx = 0;
+        }
+
+        return form;
+    }
+
+    private JTextField createReadOnlyField(String value) {
+        JTextField field = createTextField("readonly");
+        field.setText(value);
+        field.setEditable(false);
+        field.setBackground(new Color(35, 45, 63));
+        return field;
+    }
+
+    private UserRole parseRole(String role) {
+        if ("Administrador".equals(role)) {
+            return UserRole.ADMIN;
+        }
+        if ("Lider".equals(role)) {
+            return UserRole.LEADER;
+        }
+        return UserRole.MEMBER;
     }
 
     private void configureFilterField(JTextField field) {

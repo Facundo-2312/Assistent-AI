@@ -14,13 +14,13 @@ class DesktopAuthenticationServiceTest {
     @Test
     void shouldRegisterFirstMemberAsAdminAndAuthenticateWithPassword() {
         UserInMemoryRepository userRepository = new UserInMemoryRepository();
-        UserAccountService userAccountService = new UserAccountService(
+        WorkspaceAccessService workspaceAccessService = new WorkspaceAccessService(
                 userRepository,
                 new TeamInMemoryRepository(),
                 new BCryptPasswordEncoder()
         );
         DesktopAuthenticationService authenticationService = new DesktopAuthenticationService(
-                userAccountService
+                workspaceAccessService
         );
 
         DesktopSession registeredMember = authenticationService.register(
@@ -30,6 +30,7 @@ class DesktopAuthenticationServiceTest {
         );
 
         assertThat(registeredMember.role()).isEqualTo(UserRole.ADMIN);
+        assertThat(registeredMember.teamCode()).isNotBlank();
         assertThat(authenticationService.authenticate("facundo", "Password123!")).contains(registeredMember);
         assertThat(authenticationService.authenticate("facundo", "incorrecta")).isEmpty();
         assertThat(userRepository.findByUsername("facundo").orElseThrow().getPasswordHash())

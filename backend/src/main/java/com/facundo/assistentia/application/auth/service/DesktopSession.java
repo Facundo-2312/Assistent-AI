@@ -8,6 +8,9 @@ public record DesktopSession(
         UUID userId,
         String username,
         String displayName,
-        UserRole role
+        UserRole role,
+        UUID teamId,
+        String teamCode,
+        String teamName
 ) {
 }

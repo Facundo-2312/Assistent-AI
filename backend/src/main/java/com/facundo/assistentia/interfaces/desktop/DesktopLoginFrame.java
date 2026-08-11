@@ -2,6 +2,7 @@ package com.facundo.assistentia.interfaces.desktop;
 
 import com.facundo.assistentia.application.auth.service.DesktopAuthenticationService;
 import com.facundo.assistentia.application.auth.service.DesktopSession;
+import com.facundo.assistentia.application.auth.dto.WorkspaceRegistrationResponse;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import javax.swing.BorderFactory;
@@ -16,6 +17,7 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.plaf.basic.BasicTabbedPaneUI;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -116,10 +118,15 @@ public final class DesktopLoginFrame extends JFrame {
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        tabs.setForeground(TEXT);
-        tabs.setBackground(SURFACE);
+        styleTabs(tabs);
         tabs.addTab("Ingresar", createLoginForm());
-        tabs.addTab("Crear cuenta", createRegistrationForm());
+        tabs.addTab("Crear equipo", createCreateWorkspaceForm());
+        tabs.addTab("Unirse con codigo", createJoinWorkspaceForm());
+
+        for (int index = 0; index < tabs.getTabCount(); index++) {
+            tabs.setForegroundAt(index, TEXT);
+            tabs.setBackgroundAt(index, SURFACE_ALT);
+        }
 
         GridBagConstraints constraints = new GridBagConstraints();
         constraints.fill = GridBagConstraints.BOTH;
@@ -145,22 +152,45 @@ public final class DesktopLoginFrame extends JFrame {
         return panel;
     }
 
-    private JPanel createRegistrationForm() {
+    private JPanel createCreateWorkspaceForm() {
         JPanel panel = createFormPanel();
+        JTextField teamName = createTextField();
         JTextField memberName = createTextField();
         JTextField username = createTextField();
         JPasswordField password = createPasswordField();
         JPasswordField confirmation = createPasswordField();
 
-        addFormTitle(panel, "Crear cuenta", "Cada miembro usa sus propias credenciales para ingresar.");
+        addFormTitle(panel, "Crear equipo", "La primera cuenta genera el codigo que usarán los demas miembros.");
+        addField(panel, "Nombre del equipo", teamName);
         addField(panel, "Nombre del miembro", memberName);
         addField(panel, "Usuario", username);
         addField(panel, "Contrasena", password);
         addField(panel, "Repetir contrasena", confirmation);
 
-        JButton createAccount = createPrimaryButton("Crear cuenta e ingresar");
-        createAccount.addActionListener(event -> createAccount(memberName, username, password, confirmation));
+        JButton createAccount = createPrimaryButton("Crear equipo e ingresar");
+        createAccount.addActionListener(event -> createWorkspace(teamName, memberName, username, password, confirmation));
         addButton(panel, createAccount);
+        return panel;
+    }
+
+    private JPanel createJoinWorkspaceForm() {
+        JPanel panel = createFormPanel();
+        JTextField teamCode = createTextField();
+        JTextField memberName = createTextField();
+        JTextField username = createTextField();
+        JPasswordField password = createPasswordField();
+        JPasswordField confirmation = createPasswordField();
+
+        addFormTitle(panel, "Unirse con codigo", "Ingresa el codigo del servidor principal para sumarte al equipo.");
+        addField(panel, "Codigo del equipo", teamCode);
+        addField(panel, "Nombre del miembro", memberName);
+        addField(panel, "Usuario", username);
+        addField(panel, "Contrasena", password);
+        addField(panel, "Repetir contrasena", confirmation);
+
+        JButton join = createPrimaryButton("Unirse e ingresar");
+        join.addActionListener(event -> joinWorkspace(teamCode, memberName, username, password, confirmation));
+        addButton(panel, join);
         return panel;
     }
 
@@ -168,11 +198,37 @@ public final class DesktopLoginFrame extends JFrame {
         JPanel panel = new JPanel();
         panel.setBackground(SURFACE);
         panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createMatteBorder(1, 1, 1, 1, new Color(226, 232, 240)),
                 BorderFactory.createEmptyBorder(32, 34, 32, 34)
         ));
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         return panel;
+    }
+
+    private void styleTabs(JTabbedPane tabs) {
+        tabs.setOpaque(true);
+        tabs.setBackground(SURFACE);
+        tabs.setForeground(TEXT);
+        tabs.setBorder(BorderFactory.createLineBorder(BORDER));
+        tabs.setUI(new BasicTabbedPaneUI() {
+            @Override
+            protected void installDefaults() {
+                super.installDefaults();
+                highlight = ACCENT;
+                lightHighlight = ACCENT;
+                shadow = SURFACE_ALT;
+                darkShadow = SURFACE_ALT;
+                focus = ACCENT;
+            }
+
+            @Override
+            protected void paintContentBorder(java.awt.Graphics graphics, int tabPlacement, int selectedIndex) {
+                graphics.setColor(BORDER);
+                graphics.drawRect(0, calculateTabAreaHeight(tabPlacement, runCount, maxTabHeight),
+                        tabs.getWidth() - 1,
+                        tabs.getHeight() - calculateTabAreaHeight(tabPlacement, runCount, maxTabHeight) - 1);
+            }
+        });
     }
 
     private void addFormTitle(JPanel panel, String title, String description) {
@@ -216,7 +272,8 @@ public final class DesktopLoginFrame extends JFrame {
         }
     }
 
-    private void createAccount(
+    private void createWorkspace(
+            JTextField teamName,
             JTextField memberName,
             JTextField username,
             JPasswordField password,
@@ -230,12 +287,45 @@ public final class DesktopLoginFrame extends JFrame {
                 return;
             }
 
-            DesktopSession session = authenticationService.register(
+            WorkspaceRegistrationResponse response = authenticationService.createWorkspace(
+                    teamName.getText(),
                     username.getText(),
                     memberName.getText(),
                     new String(rawPassword)
             );
-            openWorkspace(session);
+            showInfo("Equipo creado", "Codigo de acceso: " + response.teamCode());
+            openWorkspace(response.session());
+        } catch (IllegalArgumentException exception) {
+            showError(exception.getMessage());
+        } finally {
+            Arrays.fill(rawPassword, '\0');
+            Arrays.fill(rawConfirmation, '\0');
+        }
+    }
+
+    private void joinWorkspace(
+            JTextField teamCode,
+            JTextField memberName,
+            JTextField username,
+            JPasswordField password,
+            JPasswordField confirmation
+    ) {
+        char[] rawPassword = password.getPassword();
+        char[] rawConfirmation = confirmation.getPassword();
+        try {
+            if (!Arrays.equals(rawPassword, rawConfirmation)) {
+                showError("Las contrasenas no coinciden.");
+                return;
+            }
+
+            WorkspaceRegistrationResponse response = authenticationService.joinWorkspace(
+                    teamCode.getText(),
+                    username.getText(),
+                    memberName.getText(),
+                    new String(rawPassword)
+            );
+            showInfo("Registro completado", "Te uniste al equipo: " + response.teamName());
+            openWorkspace(response.session());
         } catch (IllegalArgumentException exception) {
             showError(exception.getMessage());
         } finally {
@@ -277,10 +367,7 @@ public final class DesktopLoginFrame extends JFrame {
 
     private JButton createPrimaryButton(String label) {
         JButton button = new JButton(label);
-        button.setBackground(ACCENT);
-        button.setForeground(BACKGROUND);
-        button.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        button.setFocusPainted(false);
+        DesktopButtonStyler.stylePrimary(button, ACCENT, BACKGROUND, 13);
         return button;
     }
 
@@ -294,6 +381,10 @@ public final class DesktopLoginFrame extends JFrame {
 
     private void showError(String message) {
         javax.swing.JOptionPane.showMessageDialog(this, message, "AssistentIA", javax.swing.JOptionPane.ERROR_MESSAGE);
+    }
+
+    private void showInfo(String title, String message) {
+        javax.swing.JOptionPane.showMessageDialog(this, message, title, javax.swing.JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void closeApplication() {

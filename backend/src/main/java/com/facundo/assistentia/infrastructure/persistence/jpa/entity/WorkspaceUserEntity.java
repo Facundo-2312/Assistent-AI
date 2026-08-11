@@ -40,6 +40,9 @@ public class WorkspaceUserEntity {
     @Column(nullable = false, unique = true, length = 180)
     private String email;
 
+    @Column(name = "team_id")
+    private UUID teamId;
+
     @Column(nullable = false, length = 100)
     private String passwordHash;
 

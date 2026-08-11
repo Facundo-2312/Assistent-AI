@@ -4,6 +4,7 @@ import com.facundo.assistentia.application.auth.service.DesktopSession;
 import com.facundo.assistentia.domain.asset.model.AssetCatalog;
 import com.facundo.assistentia.domain.asset.model.AssetHolding;
 import com.facundo.assistentia.domain.asset.repository.AssetHoldingRepository;
+import com.facundo.assistentia.domain.team.model.Team;
 import com.facundo.assistentia.domain.user.model.User;
 import com.facundo.assistentia.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -80,10 +81,19 @@ public class AssetWorkspaceService {
     }
 
     private DesktopSession toSession(User user) {
+        Team team = user.getTeam();
         String displayName = user.getLastName() == null || user.getLastName().isBlank()
                 ? user.getFirstName()
                 : user.getFirstName() + " " + user.getLastName();
 
-        return new DesktopSession(user.getId(), user.getUsername(), displayName, user.getRole());
+        return new DesktopSession(
+            user.getId(),
+            user.getUsername(),
+            displayName,
+            user.getRole(),
+            team == null ? null : team.getId(),
+            team == null ? null : team.getSlug(),
+            team == null ? null : team.getName()
+        );
     }
 }

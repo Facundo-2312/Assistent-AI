@@ -10,6 +10,7 @@ import java.util.UUID;
 @Repository
 public interface UserRepository {
     boolean existsByEmail(String email);
+    Optional<User> findById(UUID id);
     Optional<User> findByUsername(String username);
     long count();
     List<User> findAll();

@@ -68,6 +68,81 @@ public class UserAccountService {
                 .map(this::toSession);
     }
 
+    public User createManagedUser(
+            DesktopSession actor,
+            String displayName,
+            String username,
+            String email,
+            String password,
+            UserRole role
+    ) {
+        requireAdmin(actor);
+        String normalizedDisplayName = requireDisplayName(displayName);
+        String normalizedUsername = normalizeUsername(username);
+        String normalizedEmail = normalizeEmail(email, normalizedUsername);
+        validatePassword(password);
+        UserRole normalizedRole = requireRole(role);
+
+        if (userRepository.findByUsername(normalizedUsername).isPresent()) {
+            throw new IllegalArgumentException("Ese nombre de usuario ya esta en uso.");
+        }
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
+            throw new IllegalArgumentException("Ese correo ya esta en uso.");
+        }
+
+        Team actorTeam = resolveActorTeam(actor);
+        User managedUser = User.builder()
+                .id(UUID.randomUUID())
+                .username(normalizedUsername)
+                .firstName(normalizedDisplayName)
+                .email(normalizedEmail)
+                .passwordHash(passwordEncoder.encode(password))
+                .role(normalizedRole)
+                .team(actorTeam)
+                .build();
+
+        return userRepository.save(managedUser);
+    }
+
+    public User updateManagedUser(
+            DesktopSession actor,
+            UUID userId,
+            String displayName,
+            String email,
+            UserRole role,
+            String newPassword
+    ) {
+        requireAdmin(actor);
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado."));
+
+        validateSameTeam(actor, target);
+
+        String normalizedDisplayName = requireDisplayName(displayName);
+        String normalizedEmail = normalizeEmail(email, target.getUsername());
+        UserRole normalizedRole = requireRole(role);
+
+        if (!normalizedEmail.equalsIgnoreCase(target.getEmail()) && userRepository.existsByEmail(normalizedEmail)) {
+            throw new IllegalArgumentException("Ese correo ya esta en uso.");
+        }
+
+        if (target.getId().equals(actor.userId()) && normalizedRole != UserRole.ADMIN && countAdminsForActorTeam(actor) <= 1) {
+            throw new IllegalArgumentException("No puedes quitar el ultimo administrador activo.");
+        }
+
+        target.setFirstName(normalizedDisplayName);
+        target.setEmail(normalizedEmail);
+        target.setRole(normalizedRole);
+
+        if (newPassword != null && !newPassword.isBlank()) {
+            validatePassword(newPassword);
+            target.setPasswordHash(passwordEncoder.encode(newPassword));
+        }
+
+        return userRepository.save(target);
+    }
+
     private User buildTeamUser(UserCreateRequest request, Team team) {
         return User.builder()
                 .id(UUID.randomUUID())
@@ -79,6 +154,61 @@ public class UserAccountService {
                 .role(request.role())
                 .team(team)
                 .build();
+    }
+
+    private Team resolveActorTeam(DesktopSession actor) {
+        if (actor.teamId() == null) {
+            return null;
+        }
+
+        return teamRepository.findById(actor.teamId())
+                .orElseThrow(() -> new IllegalArgumentException("Equipo no encontrado para el administrador."));
+    }
+
+    private void validateSameTeam(DesktopSession actor, User target) {
+        UUID actorTeamId = actor.teamId();
+        UUID targetTeamId = target.getTeam() == null ? null : target.getTeam().getId();
+        if (actorTeamId == null && targetTeamId == null) {
+            return;
+        }
+        if (actorTeamId == null || targetTeamId == null || !actorTeamId.equals(targetTeamId)) {
+            throw new IllegalArgumentException("Solo puedes administrar usuarios de tu equipo.");
+        }
+    }
+
+    private long countAdminsForActorTeam(DesktopSession actor) {
+        return userRepository.findAll().stream()
+                .filter(user -> user.getRole() == UserRole.ADMIN)
+                .filter(user -> {
+                    UUID teamId = user.getTeam() == null ? null : user.getTeam().getId();
+                    return actor.teamId() == null ? teamId == null : actor.teamId().equals(teamId);
+                })
+                .count();
+    }
+
+    private void requireAdmin(DesktopSession actor) {
+        if (actor == null || actor.role() != UserRole.ADMIN) {
+            throw new IllegalArgumentException("Solo un administrador puede gestionar usuarios.");
+        }
+    }
+
+    private UserRole requireRole(UserRole role) {
+        if (role == null) {
+            throw new IllegalArgumentException("Selecciona un rol valido.");
+        }
+        return role;
+    }
+
+    private String normalizeEmail(String email, String username) {
+        if (email == null || email.isBlank()) {
+            return username + "@local.assistentia";
+        }
+
+        String normalized = email.trim().toLowerCase(Locale.ROOT);
+        if (!normalized.matches("^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$")) {
+            throw new IllegalArgumentException("Ingresa un correo valido.");
+        }
+        return normalized;
     }
 
     private UserResponse toResponse(User saved) {
@@ -93,11 +223,20 @@ public class UserAccountService {
     }
 
     private DesktopSession toSession(User user) {
+        Team team = user.getTeam() == null ? null : teamRepository.findById(user.getTeam().getId()).orElse(user.getTeam());
         String displayName = user.getLastName() == null || user.getLastName().isBlank()
                 ? user.getFirstName()
                 : user.getFirstName() + " " + user.getLastName();
 
-        return new DesktopSession(user.getId(), user.getUsername(), displayName, user.getRole());
+        return new DesktopSession(
+            user.getId(),
+            user.getUsername(),
+            displayName,
+            user.getRole(),
+            team == null ? null : team.getId(),
+            team == null ? null : team.getSlug(),
+            team == null ? null : team.getName()
+        );
     }
 
     private String usernameFrom(String email) {

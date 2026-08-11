@@ -9,6 +9,8 @@ frontend/dist/
 
 backend/target/
 backend/data/
+dist/
+tools/
 
 .idea/
 .vscode/*

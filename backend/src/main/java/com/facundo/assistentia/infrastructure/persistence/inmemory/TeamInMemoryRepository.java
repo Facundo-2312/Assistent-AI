@@ -20,6 +20,13 @@ public class TeamInMemoryRepository implements TeamRepository {
     }
 
     @Override
+    public Optional<Team> findBySlug(String slug) {
+        return storage.values().stream()
+                .filter(team -> team.getSlug() != null && team.getSlug().equalsIgnoreCase(slug))
+                .findFirst();
+    }
+
+    @Override
     public Team save(Team team) {
         if (team.getId() == null) {
             team.setId(UUID.randomUUID());

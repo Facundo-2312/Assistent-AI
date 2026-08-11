@@ -2,6 +2,7 @@ package com.facundo.assistentia.infrastructure.persistence.jpa.adapter;
 
 import com.facundo.assistentia.domain.user.model.User;
 import com.facundo.assistentia.domain.user.repository.UserRepository;
+import com.facundo.assistentia.domain.team.model.Team;
 import com.facundo.assistentia.infrastructure.persistence.jpa.entity.WorkspaceUserEntity;
 import com.facundo.assistentia.infrastructure.persistence.jpa.repository.WorkspaceUserJpaRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 @Profile("!test")
@@ -21,6 +23,11 @@ public class JpaUserRepositoryAdapter implements UserRepository {
     @Override
     public boolean existsByEmail(String email) {
         return userJpaRepository.existsByEmailIgnoreCase(email);
+    }
+
+    @Override
+    public Optional<User> findById(UUID id) {
+        return userJpaRepository.findById(id).map(this::toDomain);
     }
 
     @Override
@@ -50,6 +57,7 @@ public class JpaUserRepositoryAdapter implements UserRepository {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .email(user.getEmail())
+                .teamId(user.getTeam() == null ? null : user.getTeam().getId())
                 .passwordHash(user.getPasswordHash())
                 .role(user.getRole())
                 .build();
@@ -64,6 +72,7 @@ public class JpaUserRepositoryAdapter implements UserRepository {
                 .email(user.getEmail())
                 .passwordHash(user.getPasswordHash())
                 .role(user.getRole())
+                .team(user.getTeamId() == null ? null : Team.builder().id(user.getTeamId()).build())
                 .build();
     }
 }

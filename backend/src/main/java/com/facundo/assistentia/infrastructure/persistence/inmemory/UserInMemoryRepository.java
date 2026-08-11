@@ -23,6 +23,11 @@ public class UserInMemoryRepository implements UserRepository {
     }
 
     @Override
+    public Optional<User> findById(UUID id) {
+        return Optional.ofNullable(storage.get(id));
+    }
+
+    @Override
     public Optional<User> findByUsername(String username) {
         return storage.values().stream()
                 .filter(user -> user.getUsername() != null && user.getUsername().equalsIgnoreCase(username))
