@@ -30,6 +30,24 @@ cd backend
 
 Las contrasenas se guardan con hash BCrypt, nunca como texto plano.
 
+## Acceso remoto seguro
+
+La API ahora usa JWT firmados y refresh tokens de rotacion unica. Para un cliente remoto:
+
+1. Inicia sesion con `POST /api/v1/auth/login` y el cuerpo `{"username":"usuario","password":"contrasena"}`.
+2. Envia el `accessToken` devuelto en cada solicitud protegida usando el encabezado `Authorization: Bearer <accessToken>`.
+3. Cuando el access token venza, usa `POST /api/v1/auth/refresh` con `{"refreshToken":"..."}`. El token anterior queda revocado y no puede reutilizarse.
+4. Para cerrar sesion, llama a `POST /api/v1/auth/logout` con el refresh token. El perfil de la sesion activa se consulta con `GET /api/v1/auth/me`.
+
+Los endpoints de salud, login, registro inicial de equipo y union por codigo son los unicos publicos. Las rutas restantes requieren un access token; crear usuarios o equipos requiere el rol Administrador.
+
+Antes de desplegar, define un secreto propio, largo y aleatorio en el servidor. Nunca uses el valor de desarrollo incluido en el archivo de configuracion:
+
+```powershell
+$env:JWT_SECRET="reemplaza-esto-por-un-secreto-aleatorio-de-mas-de-32-caracteres"
+$env:JWT_ISSUER="assistentia-produccion"
+```
+
 ## Activos compartidos
 
 Desde **Activos**, cada miembro selecciona un nombre del catalogo e ingresa su cantidad personal. La tabla inferior muestra todos los activos registrados por todos los miembros, junto con su propietario y fecha de actualizacion.

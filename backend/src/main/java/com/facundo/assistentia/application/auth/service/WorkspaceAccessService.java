@@ -69,6 +69,12 @@ public class WorkspaceAccessService {
                 .map(this::toSession);
     }
 
+    public DesktopSession getSession(UUID userId) {
+        return userRepository.findById(userId)
+                .map(this::toSession)
+                .orElseThrow(() -> new IllegalArgumentException("La cuenta ya no existe."));
+    }
+
     private User buildUser(String username, String displayName, String password, UserRole role, Team team) {
         return User.builder()
                 .id(UUID.randomUUID())
