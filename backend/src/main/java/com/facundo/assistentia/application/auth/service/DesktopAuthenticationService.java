@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -26,5 +27,9 @@ public class DesktopAuthenticationService {
 
     public Optional<DesktopSession> authenticate(String username, String password) {
         return workspaceAccessService.authenticate(username, password);
+    }
+
+    public DesktopSession getSession(UUID userId) {
+        return workspaceAccessService.getSession(userId);
     }
 }
